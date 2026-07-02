@@ -1,0 +1,13 @@
+{
+  "name": "pdf-batch-automator",
+  "version": "1.0.0",
+  "description": "Batch-edit Rapido PDF receipts: rename customer and randomise price",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "pdf-lib": "^1.17.1",
+    "pdfjs-dist": "3.11.174"
+  }
+}
