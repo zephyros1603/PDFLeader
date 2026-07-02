@@ -1,6 +1,6 @@
 **PDF Leader**
-# Side Project which i did on my free 
-# Create a issues if you find a bug 
+#Side Project which i did on my free 
+#Create a issues if you find a bug 
 
 # known bug as of now (PS: gonna fix it later)
 ## after you upload the pdf file the main screen says error uploading the file , but your able to preview it in the right window , just roatate it to any angle and revert it back
