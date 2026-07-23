@@ -6,6 +6,7 @@ import Sidebar from './components/Sidebar.jsx'
 import PDFViewer from './components/PDFViewer.jsx'
 import SignaturePad from './components/SignaturePad.jsx'
 import UploadArea from './components/UploadArea.jsx'
+import AutomatorPage from './components/AutomatorPage.jsx'
 
 export default function App() {
   const [uploadedFile, setUploadedFile] = useState(null)
@@ -26,8 +27,10 @@ export default function App() {
   const [activePanel, setActivePanel] = useState('edit')
   const [isMergeOpen, setIsMergeOpen] = useState(false)
   const [isSplitOpen, setIsSplitOpen] = useState(false)
+  const [activePage, setActivePage] = useState('editor')
   // textEdits: { [pageIndex]: { [itemId]: { originalStr, newStr, pdfX, pdfY, pdfWidth, pdfFontSize } } }
   const [textEdits, setTextEdits] = useState({})
+  const [cropSelection, setCropSelection] = useState(null) // { pageIndex, pdfX, pdfY, pdfW, pdfH }
 
   const handleTextEdit = useCallback((pageIndex, itemId, editData) => {
     setTextEdits(prev => ({
@@ -72,6 +75,12 @@ export default function App() {
   const handleCancelTextEdits = useCallback(() => {
     setTextEdits({})
     setActiveTool('select')
+  }, [])
+
+  // Clear crop selection whenever the tool changes away from 'crop'
+  const setActiveToolAndClearCrop = useCallback((tool) => {
+    if (tool !== 'crop') setCropSelection(null)
+    setActiveTool(tool)
   }, [])
 
   const addAnnotation = useCallback((pageIndex, annotation) => {
@@ -252,6 +261,56 @@ export default function App() {
     }
   }, [uploadedFile])
 
+  const handleExtractPage = useCallback(async (pageIndex) => {
+    if (!uploadedFile) return
+    try {
+      const response = await axios.post('/api/split', { filename: uploadedFile.filename, pageIndex })
+      const { pages } = response.data
+      pages.forEach(({ page, data }) => {
+        const bytes = atob(data)
+        const arr = new Uint8Array(bytes.length)
+        for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i)
+        const blob = new Blob([arr], { type: 'application/pdf' })
+        const url = window.URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `${(uploadedFile.originalName || 'page').replace(/\.pdf$/i, '')}-page-${page}.pdf`
+        document.body.appendChild(a); a.click(); a.remove()
+        window.URL.revokeObjectURL(url)
+      })
+    } catch (err) {
+      console.error('Extract page error:', err)
+      alert('Failed to extract page.')
+    }
+  }, [uploadedFile])
+
+  const handleCropSelect = useCallback((pageIndex, rect) => {
+    setCropSelection({ pageIndex, ...rect })
+  }, [])
+
+  const handleApplyCrop = useCallback(async () => {
+    if (!uploadedFile || !cropSelection) return
+    setIsExporting(true)
+    try {
+      await axios.post('/api/crop', {
+        filename: uploadedFile.filename,
+        pageIndex: cropSelection.pageIndex,
+        x: cropSelection.pdfX,
+        y: cropSelection.pdfY,
+        width: cropSelection.pdfW,
+        height: cropSelection.pdfH,
+      })
+      setUploadedFile(prev => ({ ...prev, url: `/api/pdf/${prev.filename}?t=${Date.now()}` }))
+      setCropSelection(null)
+      setActiveTool('select')
+    } catch (err) {
+      console.error('Crop error:', err)
+      alert('Failed to apply crop.')
+    } finally {
+      setIsExporting(false)
+    }
+  }, [uploadedFile, cropSelection])
+
   const handleDeletePage = useCallback(async (pageIndex) => {
     if (!uploadedFile) return
     try {
@@ -293,11 +352,20 @@ export default function App() {
         onAddPageNumbers={handleAddPageNumbers}
         filename={uploadedFile?.originalName}
         isExporting={isExporting}
+        activePage={activePage}
+        onNavigate={setActivePage}
       />
-      <div className="app-body">
+
+      {activePage === 'automator' && (
+        <div className="app-body" style={{ overflow: 'auto' }}>
+          <AutomatorPage />
+        </div>
+      )}
+
+      {activePage === 'editor' && <div className="app-body">
         <Toolbar
           activeTool={activeTool}
-          setActiveTool={setActiveTool}
+          setActiveTool={setActiveToolAndClearCrop}
           activeColor={activeColor}
           setActiveColor={setActiveColor}
           lineWidth={lineWidth}
@@ -311,6 +379,32 @@ export default function App() {
           canRedo={historyIndex < history.length - 1}
         />
         <main className="main-content" style={{ flexDirection: 'column', alignItems: 'stretch', padding: 0 }}>
+          {/* Crop confirmation bar */}
+          {activeTool === 'crop' && uploadedFile && (
+            <div className="text-edit-bar crop-bar">
+              <div className="text-edit-info">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#059669" strokeWidth="2">
+                  <path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 22V8a2 2 0 0 0-2-2H2"/>
+                </svg>
+                <span>Drag to select crop area on the page</span>
+                {cropSelection && (
+                  <span className="text-changes-badge" style={{ background: '#059669' }}>
+                    {Math.round(cropSelection.pdfW)} × {Math.round(cropSelection.pdfH)} pt selected
+                  </span>
+                )}
+              </div>
+              <div className="text-edit-actions">
+                <button className="btn-secondary btn-sm" onClick={() => { setCropSelection(null); setActiveTool('select') }}>
+                  Cancel
+                </button>
+                <button className="btn-primary btn-sm" style={{ background: '#059669', borderColor: '#059669' }}
+                  onClick={handleApplyCrop} disabled={!cropSelection || isExporting}>
+                  {isExporting ? 'Cropping…' : cropSelection ? 'Apply Crop' : 'Draw crop first'}
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Text Edit Mode bar */}
           {activeTool === 'editText' && uploadedFile && (
             <div className="text-edit-bar">
@@ -360,6 +454,7 @@ export default function App() {
                 setAnnotations={setAnnotations}
                 textEdits={textEdits}
                 onTextEdit={handleTextEdit}
+                onCropSelect={handleCropSelect}
               />
             )}
           </div>
@@ -372,9 +467,11 @@ export default function App() {
             onPageChange={setCurrentPage}
             onRotatePage={handleRotatePage}
             onDeletePage={handleDeletePage}
+            onExtractPage={handleExtractPage}
+            onDisassemble={handleSplit}
           />
         )}
-      </div>
+      </div>}
 
       {showSignaturePad && (
         <SignaturePad

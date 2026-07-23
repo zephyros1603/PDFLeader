@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import * as pdfjsLib from 'pdfjs-dist'
 import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min?url'
 import AnnotationCanvas from './AnnotationCanvas.jsx'
@@ -23,6 +23,7 @@ export default function PDFViewer({
   setAnnotations,
   textEdits,
   onTextEdit,
+  onCropSelect,
 }) {
   const [pdfDoc, setPdfDoc] = useState(null)
   const [loadError, setLoadError] = useState(null)
@@ -34,6 +35,7 @@ export default function PDFViewer({
     if (!fileUrl) return
     setLoading(true)
     setLoadError(null)
+    let cancelled = false
 
     Object.values(renderTasksRef.current).forEach(task => {
       try { task.cancel() } catch {}
@@ -42,17 +44,22 @@ export default function PDFViewer({
 
     const loadingTask = pdfjsLib.getDocument(fileUrl)
     loadingTask.promise.then(doc => {
+      if (cancelled) return
       pdfDocRef.current = doc
       setPdfDoc(doc)
       onTotalPages(doc.numPages)
       setLoading(false)
     }).catch(err => {
+      if (cancelled) return  // ignore errors from destroyed/superseded loads
       console.error('PDF load error:', err)
       setLoadError('Failed to load PDF. Please try again.')
       setLoading(false)
     })
 
-    return () => { loadingTask.destroy?.() }
+    return () => {
+      cancelled = true
+      loadingTask.destroy?.()
+    }
   }, [fileUrl])
 
   if (loading) {
@@ -100,6 +107,7 @@ export default function PDFViewer({
           totalPages={totalPages}
           textEdits={textEdits ? (textEdits[pageNum - 1] || {}) : {}}
           onTextEdit={(itemId, data) => onTextEdit && onTextEdit(pageNum - 1, itemId, data)}
+          onCropSelect={onCropSelect ? (rect) => onCropSelect(pageNum - 1, rect) : null}
         />
       ))}
     </div>
@@ -123,12 +131,16 @@ function PageRenderer({
   totalPages,
   textEdits,
   onTextEdit,
+  onCropSelect,
 }) {
   const canvasRef = useRef(null)
   const containerRef = useRef(null)
   const renderTaskRef = useRef(null)
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 })
   const [textItems, setTextItems] = useState([])
+  const [pdfPageSize, setPdfPageSize] = useState({ width: 0, height: 0 })
+  const [cropDrag, setCropDrag] = useState(null)  // { startX, startY }
+  const [cropRect, setCropRect] = useState(null)  // { x, y, w, h } in screen px
 
   useEffect(() => {
     if (!pdfDoc || !canvasRef.current) return
@@ -162,6 +174,8 @@ function PageRenderer({
         renderTaskRef.current = null
 
         setDimensions({ width: viewport.width, height: viewport.height })
+        const rawVP = page.getViewport({ scale: 1 })
+        setPdfPageSize({ width: rawVP.width, height: rawVP.height })
 
         // Extract text items for the Edit Text overlay
         const textContent = await page.getTextContent()
@@ -214,10 +228,57 @@ function PageRenderer({
   }, [pdfDoc, pageNum, zoom])
 
   const isEditTextMode = activeTool === 'editText'
+  const isCropMode     = activeTool === 'crop' && isCurrentPage
+
+  const handleCropDown = (e) => {
+    if (!isCropMode) return
+    const rect = containerRef.current.getBoundingClientRect()
+    const x = e.clientX - rect.left
+    const y = e.clientY - rect.top
+    setCropDrag({ startX: x, startY: y })
+    setCropRect({ x, y, w: 0, h: 0 })
+    e.preventDefault()
+  }
+
+  const handleCropMove = (e) => {
+    if (!cropDrag) return
+    const rect = containerRef.current.getBoundingClientRect()
+    const mx = Math.min(Math.max(e.clientX - rect.left, 0), dimensions.width)
+    const my = Math.min(Math.max(e.clientY - rect.top,  0), dimensions.height)
+    setCropRect({
+      x: Math.min(cropDrag.startX, mx),
+      y: Math.min(cropDrag.startY, my),
+      w: Math.abs(mx - cropDrag.startX),
+      h: Math.abs(my - cropDrag.startY),
+    })
+  }
+
+  const handleCropUp = () => {
+    setCropDrag(null)
+    if (!cropRect || cropRect.w < 12 || cropRect.h < 12) { setCropRect(null); return }
+    // cropRect is confirmed — parent picks it up via onCropSelect
+    if (onCropSelect) {
+      const scale = zoom * 1.5
+      onCropSelect({
+        screenRect: cropRect,
+        // Convert to PDF user-space coords (origin bottom-left)
+        pdfX: cropRect.x / scale,
+        pdfY: (dimensions.height - cropRect.y - cropRect.h) / scale,
+        pdfW: cropRect.w / scale,
+        pdfH: cropRect.h / scale,
+        pdfPageW: pdfPageSize.width,
+        pdfPageH: pdfPageSize.height,
+      })
+    }
+  }
 
   return (
     <div
       ref={containerRef}
+      onMouseDown={isCropMode ? handleCropDown : undefined}
+      onMouseMove={cropDrag    ? handleCropMove  : undefined}
+      onMouseUp={cropDrag      ? handleCropUp    : undefined}
+      onMouseLeave={cropDrag   ? handleCropUp    : undefined}
       style={{
         position: 'relative',
         boxShadow: isCurrentPage
@@ -228,7 +289,8 @@ function PageRenderer({
         background: 'white',
         display: 'inline-block',
         marginBottom: 4,
-        cursor: isEditTextMode ? 'text' : 'default',
+        cursor: isCropMode ? 'crosshair' : isEditTextMode ? 'text' : 'default',
+        userSelect: isCropMode ? 'none' : undefined,
       }}
       id={`page-${pageNum}`}
     >
@@ -244,6 +306,59 @@ function PageRenderer({
       </div>
 
       <canvas ref={canvasRef} className="pdf-canvas" />
+
+      {/* Crop overlay */}
+      {isCropMode && dimensions.width > 0 && (
+        <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 30 }}>
+          {/* Dark mask */}
+          <svg width={dimensions.width} height={dimensions.height}
+            style={{ position: 'absolute', inset: 0 }}>
+            {cropRect && cropRect.w > 0 && cropRect.h > 0 ? (
+              <>
+                <defs>
+                  <mask id={`crop-mask-${pageNum}`}>
+                    <rect width="100%" height="100%" fill="white"/>
+                    <rect x={cropRect.x} y={cropRect.y} width={cropRect.w} height={cropRect.h} fill="black"/>
+                  </mask>
+                </defs>
+                <rect width="100%" height="100%" fill="rgba(0,0,0,0.45)" mask={`url(#crop-mask-${pageNum})`}/>
+                <rect x={cropRect.x} y={cropRect.y} width={cropRect.w} height={cropRect.h}
+                  fill="none" stroke="#5B4CF5" strokeWidth="1.5" strokeDasharray="5 3"/>
+                {/* Corner handles */}
+                {[[cropRect.x,cropRect.y],[cropRect.x+cropRect.w,cropRect.y],
+                  [cropRect.x,cropRect.y+cropRect.h],[cropRect.x+cropRect.w,cropRect.y+cropRect.h]].map(([cx,cy],i) => (
+                  <rect key={i} x={cx-4} y={cy-4} width={8} height={8}
+                    fill="#5B4CF5" rx={1} stroke="white" strokeWidth={1}/>
+                ))}
+              </>
+            ) : (
+              <rect width="100%" height="100%" fill="rgba(0,0,0,0.18)"/>
+            )}
+          </svg>
+          {/* Size hint */}
+          {cropRect && cropRect.w > 30 && cropRect.h > 20 && (
+            <div style={{
+              position: 'absolute',
+              left: cropRect.x + cropRect.w / 2,
+              top: cropRect.y + cropRect.h + 6,
+              transform: 'translateX(-50%)',
+              background: 'rgba(30,30,46,0.9)',
+              color: '#fff',
+              fontSize: 10,
+              padding: '2px 7px',
+              borderRadius: 4,
+              whiteSpace: 'nowrap',
+              pointerEvents: 'none',
+            }}>
+              {Math.round(cropRect.w / (zoom * 1.5))} × {Math.round(cropRect.h / (zoom * 1.5))} pt
+            </div>
+          )}
+          {/* Drag hint when no rect yet */}
+          {(!cropRect || (cropRect.w < 5 && cropRect.h < 5)) && (
+            <div className="crop-drag-hint">Drag to select crop area</div>
+          )}
+        </div>
+      )}
 
       {dimensions.width > 0 && (
         <>

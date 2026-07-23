@@ -15,7 +15,9 @@ export default function Header({
   onCompress,
   onAddPageNumbers,
   filename,
-  isExporting
+  isExporting,
+  activePage,
+  onNavigate,
 }) {
   const [showToolsMenu, setShowToolsMenu] = useState(false)
   const [showPageNumModal, setShowPageNumModal] = useState(false)
@@ -56,13 +58,37 @@ export default function Header({
           PDF Leader
         </div>
 
+        {/* Page tabs */}
+        <nav className="header-tabs">
+          <button
+            className={`header-tab ${activePage === 'editor' ? 'active' : ''}`}
+            onClick={() => onNavigate('editor')}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <polyline points="14 2 14 8 20 8"/>
+            </svg>
+            Editor
+          </button>
+          <button
+            className={`header-tab ${activePage === 'automator' ? 'active' : ''}`}
+            onClick={() => onNavigate('automator')}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <polygon points="5 3 19 12 5 21 5 3"/>
+            </svg>
+            Automator
+          </button>
+        </nav>
+
         {/* Filename */}
         <div className="header-filename">
-          {filename || (uploadedFile ? 'Untitled.pdf' : 'No file open')}
+          {activePage === 'editor' ? (filename || (uploadedFile ? 'Untitled.pdf' : 'No file open')) : 'Batch PDF Automator'}
         </div>
 
         {/* Right actions */}
         <div className="header-actions" style={{ minWidth: 'auto', gap: '6px' }}>
+        {activePage === 'editor' && (<>
           {/* Sidebar toggle */}
           <div className="header-group">
             <button
@@ -224,6 +250,7 @@ export default function Header({
               </button>
             </div>
           )}
+        </>)}
         </div>
       </header>
 

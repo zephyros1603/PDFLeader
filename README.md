@@ -15,3 +15,4 @@ const VALUE_MAX     = 95;
 ```
 # the above is to change the random VALUE and name of the certain pdfs , you can define your own automator depending on the pdf structure and you what you would want to achieve.
 
+claude --resume 029e7567-bf68-453f-af60-afb03ebdb6ee

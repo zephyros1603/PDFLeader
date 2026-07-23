@@ -4,7 +4,7 @@ import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min?url'
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker
 
-export default function Sidebar({ fileUrl, totalPages, currentPage, onPageChange, onRotatePage, onDeletePage }) {
+export default function Sidebar({ fileUrl, totalPages, currentPage, onPageChange, onRotatePage, onDeletePage, onExtractPage, onDisassemble }) {
   const [pdfDoc, setPdfDoc] = useState(null)
   const [thumbnails, setThumbnails] = useState([])
   const containerRef = useRef(null)
@@ -40,7 +40,6 @@ export default function Sidebar({ fileUrl, totalPages, currentPage, onPageChange
     })
   }, [pdfDoc, thumbnails])
 
-  // Scroll to current page
   useEffect(() => {
     const el = containerRef.current?.querySelector(`[data-page="${currentPage}"]`)
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
@@ -63,6 +62,21 @@ export default function Sidebar({ fileUrl, totalPages, currentPage, onPageChange
     <div className="sidebar">
       <div className="sidebar-header">
         <h3>Pages {totalPages > 0 ? `(${totalPages})` : ''}</h3>
+        {totalPages > 1 && (
+          <button
+            className="sidebar-disassemble-btn"
+            onClick={onDisassemble}
+            title="Extract each page as a separate PDF"
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <polyline points="14 2 14 8 20 8"/>
+              <line x1="12" y1="18" x2="12" y2="12"/>
+              <polyline points="9 15 12 12 15 15"/>
+            </svg>
+            Split all
+          </button>
+        )}
       </div>
       <div className="sidebar-pages" ref={containerRef}>
         {thumbnails.map(pageNum => (
@@ -93,6 +107,17 @@ export default function Sidebar({ fileUrl, totalPages, currentPage, onPageChange
               >
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                   <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-.49-3.29"/>
+                </svg>
+              </button>
+              <button
+                className="thumbnail-action-btn extract"
+                onClick={(e) => { e.stopPropagation(); onExtractPage(pageNum - 1) }}
+                title="Extract this page as PDF"
+              >
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                  <polyline points="7 10 12 15 17 10"/>
+                  <line x1="12" y1="15" x2="12" y2="3"/>
                 </svg>
               </button>
               {totalPages > 1 && (

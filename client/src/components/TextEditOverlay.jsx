@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react'
 
-export default function TextEditOverlay({ textItems, pageIndex, zoom, edits, onEdit }) {
+export default function TextEditOverlay({
+  textItems, pageIndex, zoom, edits, onEdit,
+}) {
   const [activeId, setActiveId] = useState(null)
   const [editValue, setEditValue] = useState('')
   const inputRef = useRef(null)
@@ -16,7 +18,6 @@ export default function TextEditOverlay({ textItems, pageIndex, zoom, edits, onE
     setActiveId(item.id)
     setEditValue(edits[item.id]?.newStr ?? item.str)
   }
-
   const commitEdit = (item) => {
     onEdit(item.id, {
       originalStr: item.str,
@@ -28,13 +29,12 @@ export default function TextEditOverlay({ textItems, pageIndex, zoom, edits, onE
     })
     setActiveId(null)
   }
-
   const cancelEdit = () => setActiveId(null)
 
   if (!textItems || textItems.length === 0) {
     return (
-      <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: 20, pointerEvents: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <div style={{ background: 'rgba(0,0,0,0.55)', color: '#fff', padding: '6px 14px', borderRadius: 20, fontSize: 12, pointerEvents: 'none' }}>
+      <div style={overlayWrap}>
+        <div style={{ background: 'rgba(0,0,0,0.55)', color: '#fff', padding: '6px 14px', borderRadius: 20, fontSize: 12 }}>
           No selectable text found on this page
         </div>
       </div>
@@ -78,7 +78,7 @@ export default function TextEditOverlay({ textItems, pageIndex, zoom, edits, onE
                 : 'none',
               transition: 'border-color 0.12s, background 0.12s',
             }}
-            onClick={(e) => { e.stopPropagation(); if (!isActive) startEdit(item) }}
+            onClick={e => { e.stopPropagation(); if (!isActive) startEdit(item) }}
           >
             {isActive && (
               <input
@@ -92,34 +92,20 @@ export default function TextEditOverlay({ textItems, pageIndex, zoom, edits, onE
                   e.stopPropagation()
                 }}
                 style={{
-                  position: 'absolute',
-                  inset: 0,
-                  width: '100%',
-                  height: '100%',
-                  border: 'none',
-                  outline: 'none',
-                  background: 'transparent',
+                  position: 'absolute', inset: 0,
+                  width: '100%', height: '100%',
+                  border: 'none', outline: 'none', background: 'transparent',
                   fontSize: `${item.screenFontSize}px`,
                   fontFamily: 'Helvetica, Arial, sans-serif',
-                  padding: '0 2px',
-                  color: '#000',
-                  lineHeight: 1,
-                  whiteSpace: 'nowrap',
+                  padding: '0 2px', color: '#000', lineHeight: 1, whiteSpace: 'nowrap',
                 }}
               />
             )}
-
-            {/* Modified indicator dot */}
             {isModified && !isActive && (
               <div style={{
-                position: 'absolute',
-                top: -4,
-                right: -4,
-                width: 8,
-                height: 8,
-                borderRadius: '50%',
-                background: '#10B981',
-                border: '1.5px solid white',
+                position: 'absolute', top: -4, right: -4,
+                width: 8, height: 8, borderRadius: '50%',
+                background: '#10B981', border: '1.5px solid white',
               }} />
             )}
           </div>
@@ -127,4 +113,10 @@ export default function TextEditOverlay({ textItems, pageIndex, zoom, edits, onE
       })}
     </div>
   )
+}
+
+const overlayWrap = {
+  position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
+  zIndex: 20, pointerEvents: 'none',
+  display: 'flex', alignItems: 'center', justifyContent: 'center',
 }
