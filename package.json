@@ -1,13 +1,47 @@
 {
   "name": "pdf-leader",
+  "version": "1.0.0",
+  "description": "Desktop PDF editor and automation tool",
+  "author": "PDFLeader",
   "private": true,
+  "main": "main.js",
   "scripts": {
     "install:all": "npm install && cd server && npm install && cd ../client && npm install",
     "start": "concurrently \"npm run server\" \"npm run client\"",
     "server": "cd server && node index.js",
-    "client": "cd client && npm run dev"
+    "client": "cd client && npm run dev",
+    "build:client": "cd client && npm run build",
+    "dist": "npm run install:all && npm run build:client && electron-builder --mac"
   },
   "devDependencies": {
-    "concurrently": "^8.2.2"
+    "concurrently": "^8.2.2",
+    "electron": "^32.0.0",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.pdfleader.app",
+    "productName": "PDFLeader",
+    "asar": true,
+    "files": [
+      "main.js"
+    ],
+    "extraResources": [
+      {
+        "from": "server",
+        "to": "server",
+        "filter": ["**/*", "!uploads/**/*", "!node_modules/.cache/**/*"]
+      },
+      {
+        "from": "client/dist",
+        "to": "client/dist"
+      }
+    ],
+    "mac": {
+      "target": "dmg",
+      "category": "public.app-category.productivity"
+    },
+    "directories": {
+      "output": "dist"
+    }
   }
 }

@@ -14,7 +14,9 @@ const arialUnicodeBytes = hasUnicodeFont ? fs.readFileSync(ARIAL_UNICODE_PATH) :
 const app = express();
 const PORT = 3001;
 
-const uploadsDir = path.join(__dirname, 'uploads');
+const uploadsDir = process.env.ELECTRON_USER_DATA
+  ? path.join(process.env.ELECTRON_USER_DATA, 'uploads')
+  : path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
@@ -965,6 +967,13 @@ app.post('/api/automator/run', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+if (process.env.CLIENT_DIST_PATH) {
+  app.use(express.static(process.env.CLIENT_DIST_PATH));
+  app.get('*', (req, res) => {
+    res.sendFile(path.join(process.env.CLIENT_DIST_PATH, 'index.html'));
+  });
+}
 
 app.listen(PORT, () => {
   console.log(`PDF Leader server running on http://localhost:${PORT}`);
