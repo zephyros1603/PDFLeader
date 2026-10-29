@@ -441,7 +441,6 @@ app.post('/api/update-text', async (req, res) => {
 // ── Automator ─────────────────────────────────────────────────────────────────
 
 const AUTOMATOR_MONTHS     = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-const AUTOMATOR_MONTHS_FULL = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 const AUTO_ASCENDER  = 0.73;
 const AUTO_DESCENDER = 0.22;
 
@@ -563,7 +562,6 @@ function formatDateForPDF(date, format, originalStr, assignedTime) {
   const y   = date.getFullYear();
   const yy  = String(y).slice(2);
   const mon  = AUTOMATOR_MONTHS[date.getMonth()];
-  const monF = AUTOMATOR_MONTHS_FULL[date.getMonth()];
   switch (format) {
     case 'DD/MM/YYYY': return `${d}/${m}/${y}`;
     case 'DD-MM-YYYY': return `${d}-${m}-${y}`;
@@ -581,7 +579,7 @@ function formatDateForPDF(date, format, originalStr, assignedTime) {
         const tm = (originalStr || '').match(/,\s*(\d{1,2}:\d{2}\s*(?:AM|PM))/i);
         timePart = tm ? `, ${tm[1]}` : '';
       }
-      return `${monF} ${date.getDate()}${ord} ${y}${timePart}`;
+      return `${mon} ${date.getDate()}${ord} ${y}${timePart}`;
     }
     default: return `${d}/${m}/${y}`;
   }
@@ -782,21 +780,27 @@ function findFieldByLocator(items, locator) {
 async function applyAutoChange(page, font, { pdfX, pdfY, pdfWidth, pdfFontSize, newStr, originalStr }, { rgb }) {
   const fs_ = Math.max(pdfFontSize, 1);
   const totalW = pdfWidth > 0 ? pdfWidth : fs_ * ((originalStr || newStr).length || newStr.length) * 0.60;
+  const rightEdge = pdfX + totalW;
 
   // If original text starts with a currency symbol (e.g. "₹571.00"), preserve it:
-  // only erase and rewrite the numeric part so the original ₹ rendering stays intact.
+  // only erase/redraw the numeric part, and never draw left of it.
   const currencyMatch = (originalStr || '').match(/^([₹$€£]\s*)/);
-  let drawX = pdfX;
-  let eraseW = totalW;
-  if (currencyMatch) {
-    const prefixRatio = currencyMatch[1].length / (originalStr.length || 1);
-    const xOffset = totalW * prefixRatio;
-    drawX  = pdfX + xOffset;
-    eraseW = totalW - xOffset;
-  }
+  const prefixEndX = currencyMatch
+    ? pdfX + totalW * (currencyMatch[1].length / (originalStr.length || 1))
+    : pdfX;
 
-  page.drawRectangle({ x: drawX - 1, y: pdfY - fs_ * AUTO_DESCENDER, width: eraseW + 2, height: fs_ * (AUTO_ASCENDER + AUTO_DESCENDER), color: rgb(1,1,1) });
+  // Right-align the replacement text to the field's original right edge (matching the
+  // receipt's column alignment) instead of drawing from the old left x — otherwise a
+  // longer replacement (e.g. a reformatted date/time) overflows past the column border.
   const safe = autoToWinAnsi(newStr.trim());
+  const newW = safe ? font.widthOfTextAtSize(safe, fs_) : 0;
+  let drawX = rightEdge - newW;
+  if (currencyMatch && drawX < prefixEndX) drawX = prefixEndX;
+
+  const eraseX = Math.min(prefixEndX, drawX);
+  const eraseW = Math.max(rightEdge, drawX + newW) - eraseX;
+
+  page.drawRectangle({ x: eraseX - 1, y: pdfY - fs_ * AUTO_DESCENDER, width: eraseW + 2, height: fs_ * (AUTO_ASCENDER + AUTO_DESCENDER), color: rgb(1,1,1) });
   if (safe) page.drawText(safe, { x: drawX, y: pdfY, size: fs_, font, color: rgb(0,0,0) });
 }
 
